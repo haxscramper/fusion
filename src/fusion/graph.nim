@@ -1,5 +1,15 @@
 ## Generic implementation of graph data structure
 
+#[
+checklist
+
+- All implementations work both at compile and run-time
+- Works on JS target
+- All iterator algorithms have both mutable and immutable implementations
+- As little side effects as possible 
+
+]#
+
 import std/[intsets]
 
 type
@@ -113,8 +123,16 @@ iterator ingoing*[N, E](graph: Graph[N, E], node: Node[N, E]): Edge[N, E] =
   ## Iterate over ingoing edges for `node`
   discard
 
-iterator neighbours*[N, E](graph: Graph[N, E], node: Node[N, E]): Node[E, E] =
+iterator neighbours*[N, E](graph: Graph[N, E], node: Node[N, E]): Node[N, E] =
   ## Iterate over neighbour nodes for `node`
+  discard
+
+iterator edges*[N, E](graph: Graph[N, E]): Node[N, E] =
+  ## Iterate over all edges in graph
+  discard
+
+iterator nodes*[N, E](graph: Graph[N, E]): Edge[N, E] =
+  ## Iterate over all nodes in graph
   discard
 
 template depthFirstAux(): untyped {.dirty.} =
