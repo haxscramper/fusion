@@ -6,7 +6,7 @@ type
   Node[N, E] = ref NodeObj[N, E]
   NodeObj[N, E] = object
     id: int
-    value*: N
+    nodeValue: N
 
 
   EdgeProperty = enum
@@ -17,16 +17,19 @@ type
   EdgeObj[N, E] = object
     properties: set[EdgeProperty]
     id: int
-    value*: E
+    source*: Node[N, E]
+    target*: Node[N, E]
+    edgeValue: E
 
   GraphProperty = enum
     gpDirected
     gpUndirected
     gpAllowSelfLoops
 
-  Graph[N, E] = ref Graph[N, E]
+  Graph[N, E] = ref GraphObj[N, E]
 
   GraphObj[N, E] = object
+    properties: set[GraphProperty]
     maxId: int
     elements: IntSet
 
@@ -37,26 +40,42 @@ type
   GraphCyclesError = ref object of GraphError
 
 
+
+func newGraph*[N, E](
+    properties: set[GraphProperty] = {gpDirected, gpAllowSelfLoops}
+  ): Graph[N, E] =
+
+  Graph[N, E](properties: properties)
+
 template testProperty*[N, E](edge: Edge[N, E], property: EdgeProperty): bool =
   # when not defined(release):
   #   if len({gpDirected, gpUndirected} * edge.properties) != 1:
   #     raise newException(
   #       GraphError, "Edge must only countain single direction property")
 
-
-
   property in edge.properties
 
+func value*[N, E](node: Node[N, E]): N {.inline.} = node.nodeValue
+
+func value*[N, E](edge: Edge[N, E]): E {.inline.} = edge.edgeValue
+
+func `value=`*[N, E](node: var Node[N, E], value: N) {.inline.} =
+  node.nodeValue = value
+
+func `value=`*[N, E](edge: var Node[N, E], value: E) {.inline.} =
+  edge.edgeValue = value
+
 proc addNode*[N, E](graph: var Graph[N, E], value: N): Node[N, E] =
-  result = Node[N, E](id: graph.maxId, value: value)
-  graph.members.incl result.id
+  result = Node[N, E](id: graph.maxId, nodeValue: value)
+  graph.elements.incl result.id
   inc graph.maxId
 
 proc addEdge*[N, E](
-    graph: var Graph[N, E], fromNode, toNode: Node[N, E], value: E): Edge[N, E] =
+    graph: var Graph[N, E],
+    source, target: Node[N, E], value: E): Edge[N, E] =
 
-    result = Node[N, E](id: graph.maxId, value: value)
-    graph.members.incl result.id
+    result = Edge[N, E](id: graph.maxId, edgeValue: value)
+    graph.elements.incl result.id
     inc graph.maxId
 
 proc removeNode*[N, E](graph: var Graph[N, E], node: Node[N, E]) =
@@ -96,11 +115,20 @@ iterator neighbours*[N, E](graph: Graph[N, E], node: Node[N, E]): Node[E, E] =
   ## Iterate over neighbour nodes for `node`
   discard
 
-iterator dfs*[N, E](graph: Graph[N, E], node: Node[N, E]): Node[N, E] =
-  ## Perform depth-first iteration of parent graph, starting from `node`
+template depthFirstAux(): untyped {.dirty.} =
   discard
 
-iterator bfs*[N, E](graph: Graph[N, E], node: Node[N, E]): Node[N, E] =
+iterator depthFirst*[N, E](graph: Graph[N, E], node: Node[N, E]): Node[N, E] =
+  ## Perform depth-first iteration of **immutable** nodes in graph,
+  ## starting from `node`
+  depthFirstAux()
+
+iterator mDepthFirst*[N, E](graph: var Graph[N, E], node: Node[N, E]): Node[N, E] =
+  ## Perform depth-first iteration of **mutable** nodes in graph, starting
+  ## from `node`
+  depthFirstAux()
+
+iterator breadthFirst*[N, E](graph: Graph[N, E], node: Node[N, E]): Node[N, E] =
   ## Perform breadth-first iteration of parent graph, starting from `node`
   discard
 
@@ -111,4 +139,15 @@ proc topologicalOrdering*[N, E](graph: Graph[N, E]): seq[Node[N, E]] =
 
 
 when isMainModule:
-  discard
+  var graph = newGraph[string, int]()
+
+  let node1 = graph.addNode("test1")
+  let node2 = graph.addNode("test2")
+  let edge = graph.addEdge(node1, node2, 190)
+
+  for node in graph.mDepthFirst(node1):
+    echo node.value
+
+  for node in graph.topologicalOrdering():
+    echo node.value
+
