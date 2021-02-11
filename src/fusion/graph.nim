@@ -33,6 +33,8 @@ type
     maxId: int
     elements: IntSet
 
+  GraphPath[N, E] = seq[Edge[N, E]]
+
 
 type
   GraphError = ref object of CatchableError
@@ -137,6 +139,26 @@ proc topologicalOrdering*[N, E](graph: Graph[N, E]): seq[Node[N, E]] =
   ## graph contains cycles raise `GraphCyclesError`)
   discard
 
+proc findCycles*[N, E](graph: Graph[N, E]): seq[GraphPath[N, E]] =
+  discard
+
+proc graphvizRepr*[N, E](
+    graph: Graph[N, E],
+    nodeDotRepr: proc(node: Node[N, E]): string,
+    edgeDotRepr: proc(edge: Edge[N, E]): string = nil,
+    nodeFormatting: seq[tuple[key, value: string]] = @[],
+    edgeFormatting: seq[tuple[key, value: string]] = @[],
+    graphFormatting: seq[tuple[key, value: string]] = @[],
+    globalFormatting: seq[tuple[key, value: string]] = @[],
+  ): string =
+
+  ## Return `dot` representation for graph
+
+  result.add "digraph G {\n"
+
+
+  result.add "}"
+
 
 when isMainModule:
   var graph = newGraph[string, int]()
@@ -150,4 +172,11 @@ when isMainModule:
 
   for node in graph.topologicalOrdering():
     echo node.value
+
+  let dotRepr = graph.graphvizRepr() do(node: Node[string, int]) -> string:
+    node.value
+
+  echo dotRepr
+
+
 
