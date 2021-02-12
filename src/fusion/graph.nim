@@ -1,6 +1,6 @@
 ## Generic implementation of graph data structure
 
-import std/[tables]
+import std/[tables, deques]
 
 #[
 checklist
@@ -9,6 +9,7 @@ checklist
 - Works on JS target
 - All iterator algorithms have both mutable and immutable implementations
 - As little side effects as possible
+- Make node and edge ID's distinct integers to avoid messing them up
 
 ]#
 
@@ -80,6 +81,14 @@ func `value=`*[N, E](node: var Node[N, E], value: N) {.inline.} =
 func `value=`*[N, E](edge: var Node[N, E], value: E) {.inline.} =
   edge.edgeValue = value
 
+func lenEdges*[N, E](graph: Graph[N, E]): int =
+  for _, outEdges in graph.edgeMap:
+    result += outEdges.len
+
+func inDeg*[N, E](graph: Graph[N, E], node: Node[N, E]): int {.inline.} =
+  if node.id in graph.ingoingIndex:
+    result = len(graph.ingoingIndex[node.id])
+
 func newId[N, E](graph: var Graph[N, E]): int {.inline.} =
   result = graph.maxId
   inc graph.maxId
@@ -124,7 +133,8 @@ proc removeNode*[N, E](graph: var Graph[N, E], node: Node[N, E]) =
 proc removeEdge*[N, E](graph: var Graph[N, E], edge: Edge[N, E]) =
   ## Remove `edge` from graph. Note that starting/ending nodes will not be
   ## removed.
-  graph.edges[source.id].excl edge.target.id
+  graph.edgeMap[edge.source.id].del edge.target.id
+  graph.ingoingIndex.del edge.target.id
 
 proc adjacent*[N, E](graph: Graph[N, E], node1, node2: Node[N, E]): bool =
   ## Tests whether there is an edge from the vertex x to the vertex y;
@@ -132,8 +142,8 @@ proc adjacent*[N, E](graph: Graph[N, E], node1, node2: Node[N, E]): bool =
 
 iterator outgoing*[N, E](graph: Graph[N, E], node: Node[N, E]): Edge[N, E] =
   ## Iterate over outgoing edges for `node`
-  for outList in items(graph.edges[node.id]):
-    for (outId, outEdge) in items(outList):
+  if node.id in graph.edgeMap:
+    for _, outEdge in pairs(graph.edgeMap[node.id]):
       yield outEdge
 
 iterator ingoing*[N, E](graph: Graph[N, E], node: Node[N, E]): Edge[N, E] =
@@ -156,32 +166,88 @@ template depthFirstAux(): untyped {.dirty.} =
   discard
 
 iterator depthFirst*[N, E](
-    graph: Graph[N, E], node: Node[N, E], preorderYield: bool = true
+    graph: Graph[N, E], root: Node[N, E], preorderYield: bool = true
   ): Node[N, E] =
   ## Perform depth-first iteration of **immutable** nodes in graph,
   ## starting from `node`
-  depthFirstAux()
+  discard
+
+
 
 iterator depthFirst*[N, E](
-    graph: var Graph[N, E], node: Node[N, E], preorderYield: bool = true
+    graph: var Graph[N, E], root: Node[N, E], preorderYield: bool = true
   ): Node[N, E] =
   ## Perform depth-first iteration of **mutable** nodes in graph, starting
   ## from `node`
-  depthFirstAux()
+  var
+    visited: IntSet
+    stack: seq[seq[Node[N, E]]]
 
-iterator breadthFirst*[N, E](graph: Graph[N, E], node: Node[N, E]): Node[N, E] =
+  stack.add @[root]
+
+
+  while stack.len > 0 and stack[^1].len > 0:
+    let top = stack[^1].pop
+
+    yield top
+
+    var buf: seq[Node[N, E]]
+    for outEdge in graph.outgoing(top):
+      if outEdge.target.id notin visited:
+        visited.incl outEdge.target.id
+        buf.add outEdge.target
+
+    if buf.len > 0:
+      stack.add buf
+
+iterator breadthFirst*[N, E](graph: Graph[N, E], root: Node[N, E]): Node[N, E] =
   ## Perform breadth-first iteration of parent graph, starting from `node`
   discard
 
-iterator breadthFirst*[N, E](graph: var Graph[N, E], node: Node[N, E]): var Node[N, E] =
+iterator breadthFirst*[N, E](graph: var Graph[N, E], root: Node[N, E]): var Node[N, E] =
   ## Perform breadth-first iteration of parent graph, starting from `node`
-  discard
+  var que = initDeque[Node[N, E]]()
+  que.addLast(root)
 
+  var visited: IntSet
+
+  while que.len > 0:
+    for outEdge in graph.outgoing(root):
+      if outEdge.target.id notin visited:
+        visited.incl outEdge.target.id
+        que.add outEdge.target
+
+proc pop(iset: var IntSet): int =
+  for i in iset:
+    result = i
+    break
+
+  iset.excl result
 
 proc topologicalOrdering*[N, E](graph: Graph[N, E]): seq[Node[N, E]] =
   ## Return graph nodes in topological ordering if possible. Otherwise (if
   ## graph contains cycles raise `GraphCyclesError`)
-  discard
+  var noincoming: IntSet
+  for node in graph.nodes:
+    if graph.inDeg(node) == 0:
+      noincoming.incl node.id
+
+  var graph = graph
+
+  while len(noincoming) > 0:
+    let node = noincoming.pop
+    result.add graph.nodeMap[node]
+    for outEdge in graph.outgoing(graph.nodeMap[node]):
+      graph.removeEdge(outEdge)
+      if graph.inDeg(outEdge.target) == 0:
+        noincoming.incl outEdge.target.id
+
+  if graph.lenEdges > 0:
+    raise GraphCyclesError(
+      msg: "Topological sorting is impossible, graph contains cycles")
+
+
+
 
 proc dependencyOrdering*[N, E](
     graph: Graph[N, E],
