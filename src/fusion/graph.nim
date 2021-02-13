@@ -1,6 +1,6 @@
 ## Generic implementation of graph data structure
 
-import std/[tables, deques]
+import std/[tables, deques, hashes, random, strformat]
 
 #[
 checklist
@@ -21,13 +21,8 @@ type
     id: int
     nodeValue: N
 
-  EdgeProperty = enum
-    epOutgoing
-    epIngoing
-
   Edge[N, E] = ref EdgeObj[N, E]
   EdgeObj[N, E] = object
-    properties: set[EdgeProperty]
     id: int
     source*: Node[N, E]
     target*: Node[N, E]
@@ -41,7 +36,8 @@ type
   Graph[N, E] = ref GraphObj[N, E]
 
   GraphObj[N, E] = object
-    nodeMap: Table[int, Node[N, E]]
+    nodeMap: Table[Hash, Node[N, E]]
+    nodeIdMap: Table[int, Node[N, E]]
     properties: set[GraphProperty]
     maxId: int
     edgeMap: Table[int, Table[int, Edge[N, E]]]
@@ -62,14 +58,6 @@ func newGraph*[N, E](
   ): Graph[N, E] =
 
   Graph[N, E](properties: properties)
-
-template testProperty*[N, E](edge: Edge[N, E], property: EdgeProperty): bool =
-  # when not defined(release):
-  #   if len({gpDirected, gpUndirected} * edge.properties) != 1:
-  #     raise newException(
-  #       GraphError, "Edge must only countain single direction property")
-
-  property in edge.properties
 
 func value*[N, E](node: Node[N, E]): N {.inline.} = node.nodeValue
 
@@ -98,7 +86,8 @@ func isDirected*[N, E](graph: Graph[N, E]): bool {.inline.} =
 
 proc addNode*[N, E](graph: var Graph[N, E], value: N): Node[N, E] =
   result = Node[N, E](id: graph.newId, nodeValue: value)
-  graph.nodeMap[result.id] = result
+  graph.nodeIdMap[result.id] = result
+  graph.nodeMap[hash(value)] = result
 
 proc addEdge*[N, E](
     graph: var Graph[N, E],
@@ -135,6 +124,13 @@ proc removeEdge*[N, E](graph: var Graph[N, E], edge: Edge[N, E]) =
   ## removed.
   graph.edgeMap[edge.source.id].del edge.target.id
   graph.ingoingIndex.del edge.target.id
+
+proc getNode*[N, E](graph: Graph[N, E], value: N): Node[N, E] =
+  ## Return node associated with given value
+  graph.nodeMap[hash(value)]
+
+proc getNodeById*[N, E](graph: Graph[N, E], id: int): Node[N, E] =
+  graph.nodeIdMap[id]
 
 proc adjacent*[N, E](graph: Graph[N, E], node1, node2: Node[N, E]): bool =
   ## Tests whether there is an edge from the vertex x to the vertex y;
@@ -236,8 +232,8 @@ proc topologicalOrdering*[N, E](graph: Graph[N, E]): seq[Node[N, E]] =
 
   while len(noincoming) > 0:
     let node = noincoming.pop
-    result.add graph.nodeMap[node]
-    for outEdge in graph.outgoing(graph.nodeMap[node]):
+    result.add graph.getNodeById(node)
+    for outEdge in graph.outgoing(graph.getNodeById(node)):
       graph.removeEdge(outEdge)
       if graph.inDeg(outEdge.target) == 0:
         noincoming.incl outEdge.target.id
@@ -299,6 +295,16 @@ proc graphvizRepr*[N, E](
   result.add "}"
 
 
+import std/[times]
+
+template timeIt(name: string, body: untyped): untyped =
+  block:
+    let start = cpuTime()
+    body
+    let total {.inject.} = cpuTime() - start
+    echo &"  {int(total * 1000):<5} ms ", name
+
+
 when isMainModule:
   var graph = newGraph[string, int]()
 
@@ -318,3 +324,30 @@ when isMainModule:
     "[shape=box]"
 
   echo dotRepr
+
+  var rand = initRand(228)
+
+  for i in [10, 100, 1000, 10000]:
+    var graph = newGraph[int, int]()
+    echo "Processing \e[31m", i, "\e[39m items"
+    timeIt "Adding nodes":
+      for val in 0 ..< i:
+        discard graph.addNode(val)
+
+
+    timeIt "Adding edges":
+      for val in 0 ..< i:
+        discard graph.addEdge(
+          graph.getNode(rand.rand 0 ..< i),
+          graph.getNode(rand.rand 0 ..< i),
+          0
+        )
+
+    timeIt "Iterate over nodes":
+      for node in graph.nodes:
+        discard node.value
+
+    timeIt "Iterate over all outging for each node":
+      for node in graph.nodes:
+        for outNode in graph.outgoing(node):
+          discard outNode.value
