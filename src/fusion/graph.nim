@@ -1,6 +1,6 @@
 ## Generic implementation of graph data structure
 
-import std/[tables, deques, hashes, random, strformat]
+import std/[tables, deques, hashes, random, strformat, strutils]
 
 #[
 checklist
@@ -40,8 +40,9 @@ type
     nodeIdMap: Table[int, Node[N, E]]
     properties: set[GraphProperty]
     maxId: int
-    edgeMap: Table[int, Table[int, Edge[N, E]]]
+    edgeMap: Table[(int, int), Edge[N, E]]
     ingoingIndex: Table[int, IntSet]
+    outgoingIndex: Table[int, IntSet]
 
   GraphPath[N, E] = seq[Edge[N, E]]
 
@@ -69,9 +70,7 @@ func `value=`*[N, E](node: var Node[N, E], value: N) {.inline.} =
 func `value=`*[N, E](edge: var Node[N, E], value: E) {.inline.} =
   edge.edgeValue = value
 
-func lenEdges*[N, E](graph: Graph[N, E]): int =
-  for _, outEdges in graph.edgeMap:
-    result += outEdges.len
+func lenEdges*[N, E](graph: Graph[N, E]): int = graph.edgeMap.len
 
 func inDeg*[N, E](graph: Graph[N, E], node: Node[N, E]): int {.inline.} =
   if node.id in graph.ingoingIndex:
@@ -93,18 +92,19 @@ proc addEdge*[N, E](
     graph: var Graph[N, E],
     source, target: Node[N, E], value: E): Edge[N, E] =
 
-    result = Edge[N, E](
-      id: graph.maxId,
-      edgeValue: value,
-      source: source,
-      target: target
-    )
+  result = Edge[N, E](
+    id: graph.maxId,
+    edgeValue: value,
+    source: source,
+    target: target
+  )
 
-    graph.edgeMap.mgetOrPut(
-      source.id, initTable[int, Edge[N, E]]())[target.id] = result
+  graph.edgeMap[(source.id, target.id)] = result
 
-    if graph.isDirected():
-      graph.ingoingIndex.mgetOrPut(target.id, IntSet()).incl source.id
+  graph.outgoingIndex.mgetOrPut(source.id, IntSet()).incl target.id
+
+  if not graph.isDirected():
+    graph.ingoingIndex.mgetOrPut(target.id, IntSet()).incl source.id
 
 
 proc removeNode*[N, E](graph: var Graph[N, E], node: Node[N, E]) =
@@ -122,7 +122,8 @@ proc removeNode*[N, E](graph: var Graph[N, E], node: Node[N, E]) =
 proc removeEdge*[N, E](graph: var Graph[N, E], edge: Edge[N, E]) =
   ## Remove `edge` from graph. Note that starting/ending nodes will not be
   ## removed.
-  graph.edgeMap[edge.source.id].del edge.target.id
+  graph.edgeMap.del (edge.source.id, edge.target.id)
+  # FIXME
   graph.ingoingIndex.del edge.target.id
 
 proc getNode*[N, E](graph: Graph[N, E], value: N): Node[N, E] =
@@ -138,9 +139,9 @@ proc adjacent*[N, E](graph: Graph[N, E], node1, node2: Node[N, E]): bool =
 
 iterator outgoing*[N, E](graph: Graph[N, E], node: Node[N, E]): Edge[N, E] =
   ## Iterate over outgoing edges for `node`
-  if node.id in graph.edgeMap:
-    for _, outEdge in pairs(graph.edgeMap[node.id]):
-      yield outEdge
+  if node.id in graph.outgoingIndex:
+    for targetId in graph.outgoingIndex[node.id]:
+      yield graph.edgeMap[(node.id, targetId)]
 
 iterator ingoing*[N, E](graph: Graph[N, E], node: Node[N, E]): Edge[N, E] =
   ## Iterate over ingoing edges for `node`
@@ -149,9 +150,8 @@ iterator ingoing*[N, E](graph: Graph[N, E], node: Node[N, E]): Edge[N, E] =
 
 iterator edges*[N, E](graph: Graph[N, E]): Edge[N, E] =
   ## Iterate over all edges in graph
-  for _, outList in pairs(graph.edgeMap):
-    for _, edge in pairs(outList):
-      yield edge
+  for _, edge in pairs(graph.edgeMap):
+    yield edge
 
 iterator nodes*[N, E](graph: Graph[N, E]): Node[N, E] =
   ## Iterate over all nodes in graph
@@ -269,22 +269,25 @@ proc graphvizRepr*[N, E](
 
   result.add "digraph G {\n"
 
+  template toIdStr(node: Node[N, E]): string =
+    "n" & replace($node.id, "-", "neg")
+
   for node in graph.nodes:
-    result.add "  " & $node.id
+    result.add "  " & toIdStr(node)
     if not isNil(nodeDotAttrs):
       result.add nodeDotAttrs(node)
 
     result.add ";\n"
 
   for edge in graph.edges:
-    result.add  "  " & $edge.source.id
+    result.add  "  " & toIdStr(edge.source)
     if graph.isDirected():
       result.add " -> "
 
     else:
       result.add " -- "
 
-    result.add $edge.target.id
+    result.add toIdStr(edge.target)
 
     if not isNil(edgeDotAttrs):
       result.add edgeDotAttrs(edge)
@@ -305,7 +308,7 @@ template timeIt(name: string, body: untyped): untyped =
     echo &"  {int(total * 1000):<5} ms ", name
 
 
-when isMainModule:
+proc main() =
   var graph = newGraph[string, int]()
 
   let node1 = graph.addNode("test1")
@@ -351,3 +354,6 @@ when isMainModule:
       for node in graph.nodes:
         for outNode in graph.outgoing(node):
           discard outNode.value
+
+when isMainModule:
+  main()
