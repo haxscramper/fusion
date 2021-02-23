@@ -2,8 +2,8 @@
 
 **Docs:** https://nim-lang.github.io/fusion/theindex.html
 
-Fusion contains Nim modules that are to be bundled with the Nim installation in
-order to give us something like the "Nim distribution".
+Fusion contains Nim modules that are ment to be treated as an extension to stdlib.
+
 Fusion fullfills multiple purposes:
 
 * It contains candidates for inclusion into the stdlib. However these modules only
@@ -23,6 +23,3 @@ Fusion fullfills multiple purposes:
   M2.nim can share code with M.nim via Nim's `include` or `import export`
   mechanism in order to fight code duplication.
 
-Fusion is for now an idea about how to grow Nim's ecosystem without the pain points
-of more traditional approaches.
-Time will tell if the idea is a good one.
